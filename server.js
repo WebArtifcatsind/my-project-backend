@@ -33,7 +33,7 @@ const allowedOrigins = [
   "https://my-project-backend.vercel.app", // Your Vercel domain
   "https://webartifacts.in", // Your custom domain
   "https://www.webartifacts.in", // Your custom domain with www
-  "https://your-site.netlify.app", // Your Netlify preview domain
+  "https://elaborate-panda-a27d29.netlify.app", // Your Netlify preview domain
   // Add other Netlify subdomains as needed
 ];
 
