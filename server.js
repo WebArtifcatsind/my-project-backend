@@ -34,7 +34,6 @@ const allowedOrigins = [
   "https://webartifacts.in", // Your custom domain
   "https://www.webartifacts.in", // Your custom domain with www
   "https://elaborate-panda-a27d29.netlify.app", // Your Netlify preview domain
-  // Add other Netlify subdomains as needed
 ];
 
 app.use(cors({
