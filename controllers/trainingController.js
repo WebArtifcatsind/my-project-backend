@@ -1,12 +1,12 @@
 
-//D:\office\webartifacts\web-backend\controllers\trainingController.js
+// controllers/trainingController.js
+
 import path from "path";
 import fs from "fs";
-import connection from "../models/db.js";
-
+import getConnection from "../models/db.js";
 
 // 📤 Upload training material
-export const uploadTraining = (req, res) => {
+export const uploadTraining = async (req, res) => {
   const file = req.file;
   if (!file) {
     return res.status(400).json({ error: "No file uploaded" });
@@ -16,35 +16,47 @@ export const uploadTraining = (req, res) => {
   const filePath = path.join("uploads/training/", filename);
 
   const sql = "INSERT INTO training_materials (filename, path) VALUES (?, ?)";
-  connection.query(sql, [filename, filePath], (err, result) => {
-    if (err) return res.status(500).json({ error: "Database error", err });
 
+  try {
+    const connection = await getConnection();
+    await connection.query(sql, [filename, filePath]);
     return res.status(200).json({ message: "Training material uploaded successfully", file: filename });
-  });
+  } catch (err) {
+    console.error("Database error (uploadTraining):", err);
+    return res.status(500).json({ error: "Database error", err });
+  }
 };
 
 // 📥 Get all uploaded training materials
-export const getTrainingMaterials = (req, res) => {
+export const getTrainingMaterials = async (req, res) => {
   const sql = "SELECT * FROM training_materials";
-  connection.query(sql, (err, results) => {
-    if (err) return res.status(500).json({ error: "Database error", err });
+  
+  try {
+    const connection = await getConnection();
+    const [results] = await connection.query(sql);
     return res.status(200).json(results);
-  });
+  } catch (err) {
+    console.error("Database error (getTrainingMaterials):", err);
+    return res.status(500).json({ error: "Database error", err });
+  }
 };
 
 
-
-export const deleteTrainingMaterial = (req, res) => {
+export const deleteTrainingMaterial = async (req, res) => {
   if (req.user.role !== "admin") {
     return res.status(403).json({ message: "Access denied" });
   }
 
   const { id } = req.params;
 
-  // First, get the filename to delete from filesystem
-  const getQuery = "SELECT filename FROM training_materials WHERE id = ?";
-  connection.query(getQuery, [id], (err, results) => {
-    if (err || results.length === 0) {
+  try {
+    const connection = await getConnection();
+    
+    // First, get the filename to delete from filesystem
+    const getQuery = "SELECT filename FROM training_materials WHERE id = ?";
+    const [results] = await connection.query(getQuery, [id]);
+
+    if (results.length === 0) {
       return res.status(404).json({ message: "Training file not found" });
     }
 
@@ -52,17 +64,89 @@ export const deleteTrainingMaterial = (req, res) => {
 
     // Delete from DB
     const deleteQuery = "DELETE FROM training_materials WHERE id = ?";
-    connection.query(deleteQuery, [id], (err2) => {
-      if (err2) return res.status(500).json({ message: "Database error", error: err2 });
+    await connection.query(deleteQuery, [id]);
 
-      // Delete file from disk
-      fs.unlink(filePath, (fsErr) => {
-        if (fsErr) {
-          console.warn("⚠️ File missing on disk:", filePath);
-        }
-        return res.status(200).json({ message: "Training material deleted" });
-      });
+    // Delete file from disk
+    fs.unlink(filePath, (fsErr) => {
+      if (fsErr) {
+        console.warn("⚠️ File missing on disk:", filePath);
+      }
+      return res.status(200).json({ message: "Training material deleted" });
     });
-  });
+
+  } catch (err) {
+    console.error("Database error (deleteTrainingMaterial):", err);
+    return res.status(500).json({ message: "Database error", error: err });
+  }
 };
+
+
+
+
+// //D:\office\webartifacts\web-backend\controllers\trainingController.js
+// import path from "path";
+// import fs from "fs";
+// import connection from "../models/db.js";
+
+
+// // 📤 Upload training material
+// export const uploadTraining = (req, res) => {
+//   const file = req.file;
+//   if (!file) {
+//     return res.status(400).json({ error: "No file uploaded" });
+//   }
+
+//   const filename = file.filename;
+//   const filePath = path.join("uploads/training/", filename);
+
+//   const sql = "INSERT INTO training_materials (filename, path) VALUES (?, ?)";
+//   connection.query(sql, [filename, filePath], (err, result) => {
+//     if (err) return res.status(500).json({ error: "Database error", err });
+
+//     return res.status(200).json({ message: "Training material uploaded successfully", file: filename });
+//   });
+// };
+
+// // 📥 Get all uploaded training materials
+// export const getTrainingMaterials = (req, res) => {
+//   const sql = "SELECT * FROM training_materials";
+//   connection.query(sql, (err, results) => {
+//     if (err) return res.status(500).json({ error: "Database error", err });
+//     return res.status(200).json(results);
+//   });
+// };
+
+
+
+// export const deleteTrainingMaterial = (req, res) => {
+//   if (req.user.role !== "admin") {
+//     return res.status(403).json({ message: "Access denied" });
+//   }
+
+//   const { id } = req.params;
+
+//   // First, get the filename to delete from filesystem
+//   const getQuery = "SELECT filename FROM training_materials WHERE id = ?";
+//   connection.query(getQuery, [id], (err, results) => {
+//     if (err || results.length === 0) {
+//       return res.status(404).json({ message: "Training file not found" });
+//     }
+
+//     const filePath = path.resolve("uploads/training", results[0].filename);
+
+//     // Delete from DB
+//     const deleteQuery = "DELETE FROM training_materials WHERE id = ?";
+//     connection.query(deleteQuery, [id], (err2) => {
+//       if (err2) return res.status(500).json({ message: "Database error", error: err2 });
+
+//       // Delete file from disk
+//       fs.unlink(filePath, (fsErr) => {
+//         if (fsErr) {
+//           console.warn("⚠️ File missing on disk:", filePath);
+//         }
+//         return res.status(200).json({ message: "Training material deleted" });
+//       });
+//     });
+//   });
+// };
 

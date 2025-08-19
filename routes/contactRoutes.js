@@ -1,8 +1,9 @@
+
 import 'dotenv/config'; // This line loads environment variables from your .env file
 import express from 'express';
 import nodemailer from 'nodemailer';
 import { google } from 'googleapis'; // Import google from googleapis
-import connection from '../models/db.js';
+import getConnection from '../models/db.js'; // Updated import for promise-based connection
 
 const router = express.Router();
 
@@ -92,97 +93,101 @@ const validateContact = (req, res, next) => {
 // Submit contact form
 router.post('/contact', validateContact, async (req, res) => {
   const { name, email, phone, message } = req.body;
+  let connection; // Declare connection here
+  let transporter;
 
   try {
     // Save to database
+    connection = await getConnection(); // Get active connection
     const query = 'INSERT INTO contacts (name, email, phone, message) VALUES (?, ?, ?, ?)';
-    connection.query(query, [name, email, phone, message], async (err, result) => { // Added async here
-      if (err) {
-        console.error('Database error:', err);
-        return res.status(500).json({
-          message: 'Failed to save contact',
-          error: err.message
-        });
-      }
+    const [result] = await connection.query(query, [name, email, phone, message]);
 
-      let transporter;
-      try {
-        transporter = await createTransporter(); // Create transporter here
-      } catch (emailAuthError) {
-        console.error('Email authentication setup error:', emailAuthError);
-        // If transporter creation fails, log error and proceed without sending emails
-        return res.status(201).json({
-          message: 'Contact saved but email features are disabled',
-          warning: 'Could not set up email authentication. Confirmation email and company notification not sent.',
-          data: { id: result.insertId }
-        });
-      }
-
-
-      // 1. Send confirmation email to the user
-      const userMailOptions = {
-        from: `WebArtifacts <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: 'Thanks for contacting WebArtifacts',
-        text: `Dear ${name},\n\nThank you for contacting us. We have received your message and will get back to you soon.\n\nBest regards,\nWebArtifacts Team`,
-        html: `<p>Dear ${name},</p>
-               <p>Thank you for contacting us. We have received your message and will get back to you soon.</p>
-               <p>Best regards,<br>WebArtifacts Team</p>`
-      };
-
-      transporter.sendMail(userMailOptions, (error, info) => {
-        if (error) {
-          console.error('User email error:', error);
-          // Don't return here, attempt to send company email even if user email fails
-          // This allows the company to still know about the submission
-        }
-
-        // 2. Send notification email to the company
-        const companyMailOptions = {
-          from: `WebArtifacts Contact Form <${process.env.EMAIL_USER}>`,
-          to: process.env.EMAIL_USER, // Company's email address
-          subject: `New Contact Form Submission from ${name}`,
-          text: `A new contact form has been submitted:\n\n` +
-                `Name: ${name}\n` +
-                `Email: ${email}\n` +
-                `Phone: ${phone}\n` +
-                `Message:\n${message}\n\n` +
-                `Please respond to them at your earliest convenience.`,
-          html: `<p>A new contact form has been submitted:</p>
-                 <ul>
-                   <li><strong>Name:</strong> ${name}</li>
-                   <li><strong>Email:</strong> ${email}</li>
-                   <li><strong>Phone:</strong> ${phone}</li>
-                   <li><strong>Message:</strong><br>${message.replace(/\n/g, '<br>')}</li>
-                 </ul>
-                 <p>Please respond to them at your earliest convenience.</p>`
-        };
-
-        transporter.sendMail(companyMailOptions, (companyError, companyInfo) => {
-          if (companyError) {
-            console.error('Company notification email error:', companyError);
-            return res.status(201).json({
-              message: 'Contact saved and user email sent, but company notification failed',
-              warning: 'Company notification email could not be sent',
-              data: { id: result.insertId }
-            });
-          }
-
-          if (error) { // Check if user email previously failed
-            return res.status(201).json({
-              message: 'Contact saved and company notification sent, but user confirmation failed',
-              warning: 'Confirmation email could not be sent to the user',
-              data: { id: result.insertId }
-            });
-          }
-
-          res.status(201).json({
-            message: 'Contact submitted successfully and emails sent',
-            data: { id: result.insertId }
-          });
-        });
+    try {
+      transporter = await createTransporter();
+    } catch (emailAuthError) {
+      console.error('Email authentication setup error:', emailAuthError);
+      return res.status(201).json({
+        message: 'Contact saved but email features are disabled',
+        warning: 'Could not set up email authentication. Confirmation email and company notification not sent.',
+        data: { id: result.insertId }
       });
-    });
+    }
+
+    let userEmailError = null;
+    let companyEmailError = null;
+
+    // 1. Send confirmation email to the user
+    const userMailOptions = {
+      from: `WebArtifacts <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: 'Thanks for contacting WebArtifacts',
+      text: `Dear ${name},\n\nThank you for contacting us. We have received your message and will get back to you soon.\n\nBest regards,\nWebArtifacts Team`,
+      html: `<p>Dear ${name},</p>
+             <p>Thank you for contacting us. We have received your message and will get back to you soon.</p>
+             <p>Best regards,<br>WebArtifacts Team</p>`
+    };
+
+    try {
+      await transporter.sendMail(userMailOptions);
+    } catch (error) {
+      console.error('User email error:', error);
+      userEmailError = error;
+    }
+
+    // 2. Send notification email to the company
+    const companyMailOptions = {
+      from: `WebArtifacts Contact Form <${process.env.EMAIL_USER}>`,
+      to: process.env.EMAIL_USER, // Company's email address
+      subject: `New Contact Form Submission from ${name}`,
+      text: `A new contact form has been submitted:\n\n` +
+            `Name: ${name}\n` +
+            `Email: ${email}\n` +
+            `Phone: ${phone}\n` +
+            `Message:\n${message}\n\n` +
+            `Please respond to them at your earliest convenience.`,
+      html: `<p>A new contact form has been submitted:</p>
+             <ul>
+               <li><strong>Name:</strong> ${name}</li>
+               <li><strong>Email:</strong> ${email}</li>
+               <li><strong>Phone:</strong> ${phone}</li>
+               <li><strong>Message:</strong><br>${message.replace(/\n/g, '<br>')}</li>
+             </ul>
+             <p>Please respond to them at your earliest convenience.</p>`
+    };
+
+    try {
+      await transporter.sendMail(companyMailOptions);
+    } catch (error) {
+      console.error('Company notification email error:', error);
+      companyEmailError = error;
+    }
+
+    // Final response based on email sending status
+    if (userEmailError && companyEmailError) {
+      return res.status(201).json({
+        message: 'Contact saved, but both emails failed to send.',
+        warning: 'Confirmation email to user and company notification email failed.',
+        data: { id: result.insertId }
+      });
+    } else if (userEmailError) {
+      return res.status(201).json({
+        message: 'Contact saved and company notification sent, but user confirmation failed.',
+        warning: 'Confirmation email could not be sent to the user.',
+        data: { id: result.insertId }
+      });
+    } else if (companyEmailError) {
+      return res.status(201).json({
+        message: 'Contact saved and user email sent, but company notification failed.',
+        warning: 'Company notification email could not be sent.',
+        data: { id: result.insertId }
+      });
+    } else {
+      res.status(201).json({
+        message: 'Contact submitted successfully and emails sent',
+        data: { id: result.insertId }
+      });
+    }
+
   } catch (error) {
     console.error('Server error:', error);
     res.status(500).json({
@@ -193,7 +198,7 @@ router.post('/contact', validateContact, async (req, res) => {
 });
 
 // Get all contacts (for admin)
-router.get('/contact', (req, res) => {
+router.get('/contact', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
 
   // Basic auth check (in real app, verify JWT properly)
@@ -204,25 +209,26 @@ router.get('/contact', (req, res) => {
     });
   }
 
-  const query = 'SELECT * FROM contacts ORDER BY created_at DESC';
-  connection.query(query, (err, results) => {
-    if (err) {
-      console.error('Database error:', err);
-      return res.status(500).json({
-        message: 'Failed to fetch contacts',
-        error: err.message
-      });
-    }
+  try {
+    const connection = await getConnection(); // Get active connection
+    const query = 'SELECT * FROM contacts ORDER BY created_at DESC';
+    const [results] = await connection.query(query);
 
     res.json({
       message: 'Contacts retrieved successfully',
       data: results
     });
-  });
+  } catch (err) {
+    console.error('Database error:', err);
+    return res.status(500).json({
+      message: 'Failed to fetch contacts',
+      error: err.message
+    });
+  }
 });
 
 // Delete contact (for admin)
-router.delete('/contact/:id', (req, res) => {
+router.delete('/contact/:id', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
   const id = parseInt(req.params.id);
 
@@ -243,14 +249,9 @@ router.delete('/contact/:id', (req, res) => {
   }
 
   const query = 'DELETE FROM contacts WHERE id = ?';
-  connection.query(query, [id], (err, result) => {
-    if (err) {
-      console.error('Database error:', err);
-      return res.status(500).json({
-        message: 'Failed to delete contact',
-        error: err.message
-      });
-    }
+  try {
+    const connection = await getConnection(); // Get active connection
+    const [result] = await connection.query(query, [id]);
 
     if (result.affectedRows === 0) {
       return res.status(404).json({
@@ -263,10 +264,291 @@ router.delete('/contact/:id', (req, res) => {
       message: 'Contact deleted successfully',
       deletedId: id
     });
-  });
+  } catch (err) {
+    console.error('Database error:', err);
+    return res.status(500).json({
+      message: 'Failed to delete contact',
+      error: err.message
+    });
+  }
 });
 
 export default router;
+
+
+
+
+
+
+// import 'dotenv/config'; // This line loads environment variables from your .env file
+// import express from 'express';
+// import nodemailer from 'nodemailer';
+// import { google } from 'googleapis'; // Import google from googleapis
+// import connection from '../models/db.js';
+
+// const router = express.Router();
+
+// // Initialize OAuth2 client
+// const OAuth2 = google.auth.OAuth2;
+
+// const oauth2Client = new OAuth2(
+//   process.env.EMAIL_CLIENT_ID,
+//   process.env.EMAIL_CLIENT_SECRET,
+//   'https://developers.google.com/oauthplayground' // This is a redirect URI, can be changed if you have your own
+// );
+
+// oauth2Client.setCredentials({
+//   refresh_token: process.env.EMAIL_REFRESH_TOKEN,
+// });
+
+// // Function to get a new access token
+// async function getAccessToken() {
+//   try {
+//     const { token } = await oauth2Client.getAccessToken();
+//     return token;
+//   } catch (error) {
+//     console.error('Error getting access token:', error);
+//     throw new Error('Failed to obtain access token for email sending.');
+//   }
+// }
+
+// // Configure nodemailer transporter
+// // This transporter will be recreated for each email to ensure a fresh access token
+// const createTransporter = async () => {
+//   const accessToken = await getAccessToken();
+
+//   return nodemailer.createTransport({
+//     service: 'gmail',
+//     auth: {
+//       type: 'OAuth2',
+//       user: process.env.EMAIL_USER,
+//       clientId: process.env.EMAIL_CLIENT_ID,
+//       clientSecret: process.env.EMAIL_CLIENT_SECRET,
+//       refreshToken: process.env.EMAIL_REFRESH_TOKEN,
+//       accessToken: accessToken, // The dynamically generated access token
+//     },
+//   });
+// };
+
+
+// // Enhanced validation middleware
+// const validateContact = (req, res, next) => {
+//   const { name, email, phone, message } = req.body;
+//   const errors = {};
+
+//   // Required field validation
+//   if (!name?.trim()) errors.name = 'Name is required';
+//   if (!email?.trim()) errors.email = 'Email is required';
+//   if (!phone?.trim()) errors.phone = 'Phone is required';
+//   if (!message?.trim()) errors.message = 'Message is required';
+
+//   // Format validation
+//   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+//     errors.email = 'Please enter a valid email';
+//   }
+
+//   if (phone) {
+//     if (!phone.startsWith('+91')) {
+//       errors.phone = 'Phone must start with +91';
+//     } else if (phone.length !== 13) {
+//       errors.phone = 'Must be 10 digits after +91';
+//     } else if (!/^\+91\d{10}$/.test(phone)) {
+//       errors.phone = 'Only numbers allowed after +91';
+//     }
+//   }
+
+//   if (message?.trim() && message.length < 10) {
+//     errors.message = 'Message must be at least 10 characters';
+//   }
+
+//   if (Object.keys(errors).length > 0) {
+//     return res.status(400).json({
+//       message: 'Validation failed',
+//       errors
+//     });
+//   }
+
+//   next();
+// };
+
+// // Submit contact form
+// router.post('/contact', validateContact, async (req, res) => {
+//   const { name, email, phone, message } = req.body;
+
+//   try {
+//     // Save to database
+//     const query = 'INSERT INTO contacts (name, email, phone, message) VALUES (?, ?, ?, ?)';
+//     connection.query(query, [name, email, phone, message], async (err, result) => { // Added async here
+//       if (err) {
+//         console.error('Database error:', err);
+//         return res.status(500).json({
+//           message: 'Failed to save contact',
+//           error: err.message
+//         });
+//       }
+
+//       let transporter;
+//       try {
+//         transporter = await createTransporter(); // Create transporter here
+//       } catch (emailAuthError) {
+//         console.error('Email authentication setup error:', emailAuthError);
+//         // If transporter creation fails, log error and proceed without sending emails
+//         return res.status(201).json({
+//           message: 'Contact saved but email features are disabled',
+//           warning: 'Could not set up email authentication. Confirmation email and company notification not sent.',
+//           data: { id: result.insertId }
+//         });
+//       }
+
+
+//       // 1. Send confirmation email to the user
+//       const userMailOptions = {
+//         from: `WebArtifacts <${process.env.EMAIL_USER}>`,
+//         to: email,
+//         subject: 'Thanks for contacting WebArtifacts',
+//         text: `Dear ${name},\n\nThank you for contacting us. We have received your message and will get back to you soon.\n\nBest regards,\nWebArtifacts Team`,
+//         html: `<p>Dear ${name},</p>
+//                <p>Thank you for contacting us. We have received your message and will get back to you soon.</p>
+//                <p>Best regards,<br>WebArtifacts Team</p>`
+//       };
+
+//       transporter.sendMail(userMailOptions, (error, info) => {
+//         if (error) {
+//           console.error('User email error:', error);
+//           // Don't return here, attempt to send company email even if user email fails
+//           // This allows the company to still know about the submission
+//         }
+
+//         // 2. Send notification email to the company
+//         const companyMailOptions = {
+//           from: `WebArtifacts Contact Form <${process.env.EMAIL_USER}>`,
+//           to: process.env.EMAIL_USER, // Company's email address
+//           subject: `New Contact Form Submission from ${name}`,
+//           text: `A new contact form has been submitted:\n\n` +
+//                 `Name: ${name}\n` +
+//                 `Email: ${email}\n` +
+//                 `Phone: ${phone}\n` +
+//                 `Message:\n${message}\n\n` +
+//                 `Please respond to them at your earliest convenience.`,
+//           html: `<p>A new contact form has been submitted:</p>
+//                  <ul>
+//                    <li><strong>Name:</strong> ${name}</li>
+//                    <li><strong>Email:</strong> ${email}</li>
+//                    <li><strong>Phone:</strong> ${phone}</li>
+//                    <li><strong>Message:</strong><br>${message.replace(/\n/g, '<br>')}</li>
+//                  </ul>
+//                  <p>Please respond to them at your earliest convenience.</p>`
+//         };
+
+//         transporter.sendMail(companyMailOptions, (companyError, companyInfo) => {
+//           if (companyError) {
+//             console.error('Company notification email error:', companyError);
+//             return res.status(201).json({
+//               message: 'Contact saved and user email sent, but company notification failed',
+//               warning: 'Company notification email could not be sent',
+//               data: { id: result.insertId }
+//             });
+//           }
+
+//           if (error) { // Check if user email previously failed
+//             return res.status(201).json({
+//               message: 'Contact saved and company notification sent, but user confirmation failed',
+//               warning: 'Confirmation email could not be sent to the user',
+//               data: { id: result.insertId }
+//             });
+//           }
+
+//           res.status(201).json({
+//             message: 'Contact submitted successfully and emails sent',
+//             data: { id: result.insertId }
+//           });
+//         });
+//       });
+//     });
+//   } catch (error) {
+//     console.error('Server error:', error);
+//     res.status(500).json({
+//       message: 'Server error',
+//       error: error.message
+//     });
+//   }
+// });
+
+// // Get all contacts (for admin)
+// router.get('/contact', (req, res) => {
+//   const token = req.headers.authorization?.split(' ')[1];
+
+//   // Basic auth check (in real app, verify JWT properly)
+//   if (!token) {
+//     return res.status(401).json({
+//       message: 'Unauthorized',
+//       error: 'Missing authentication token'
+//     });
+//   }
+
+//   const query = 'SELECT * FROM contacts ORDER BY created_at DESC';
+//   connection.query(query, (err, results) => {
+//     if (err) {
+//       console.error('Database error:', err);
+//       return res.status(500).json({
+//         message: 'Failed to fetch contacts',
+//         error: err.message
+//       });
+//     }
+
+//     res.json({
+//       message: 'Contacts retrieved successfully',
+//       data: results
+//     });
+//   });
+// });
+
+// // Delete contact (for admin)
+// router.delete('/contact/:id', (req, res) => {
+//   const token = req.headers.authorization?.split(' ')[1];
+//   const id = parseInt(req.params.id);
+
+//   // Auth check
+//   if (!token) {
+//     return res.status(401).json({
+//       message: 'Unauthorized',
+//       error: 'Missing authentication token'
+//     });
+//   }
+
+//   // ID validation
+//   if (isNaN(id)) {
+//     return res.status(400).json({
+//       message: 'Invalid contact ID',
+//       error: 'ID must be a number'
+//     });
+//   }
+
+//   const query = 'DELETE FROM contacts WHERE id = ?';
+//   connection.query(query, [id], (err, result) => {
+//     if (err) {
+//       console.error('Database error:', err);
+//       return res.status(500).json({
+//         message: 'Failed to delete contact',
+//         error: err.message
+//       });
+//     }
+
+//     if (result.affectedRows === 0) {
+//       return res.status(404).json({
+//         message: 'Contact not found',
+//         error: `No contact with ID ${id} exists`
+//       });
+//     }
+
+//     res.json({
+//       message: 'Contact deleted successfully',
+//       deletedId: id
+//     });
+//   });
+// });
+
+// export default router;
 
 
 

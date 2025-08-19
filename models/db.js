@@ -6,29 +6,21 @@
 
 //D:\office\webartifacts\web-backend\models\db.js
 
-import mysql from "mysql2";
+import mysql from "mysql2/promise";
 import dotenv from "dotenv";
 dotenv.config();
 
-// --- CORRECTION: Use DATABASE_URL environment variable ---
-const connection = mysql.createConnection(process.env.DATABASE_URL);
-
-connection.connect((err) => {
-  if (err) {
+const getConnection = async () => {
+  try {
+    const connection = await mysql.createConnection(process.env.DATABASE_URL);
+    return connection;
+  } catch (err) {
     console.error("❌ MySQL Connection Failed:", err);
-  } else {
-    console.log("✅ Connected to MySQL Database!");
+    throw err;
   }
-});
+};
 
-export default connection;
-
-
-
-
-
-
-
+export default getConnection;
 
 
 
