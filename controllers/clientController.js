@@ -71,24 +71,23 @@ export const submitFeedback = async (req, res) => {
 
 // ✅ Get All Complaints (Admin Only)
 export const getAllComplaints = async (req, res) => {
-  const query = `
-    SELECT complaints.id, complaints.name, complaints.email, complaints.subject, complaints.message,
-           complaints.file, complaints.submitted_at, complaints.status,
-           users.name AS assigned_staff
-    FROM complaints
-    LEFT JOIN users ON complaints.assigned_to = users.id
-    ORDER BY complaints.submitted_at DESC
-  `;
+  const query = `
+    SELECT complaints.id, complaints.name, complaints.email, complaints.subject, complaints.message,
+    complaints.file, complaints.submitted_at, complaints.status,
+    users.name AS assigned_staff
+    FROM complaints
+    LEFT JOIN users ON complaints.assigned_to = users.id
+    ORDER BY complaints.submitted_at DESC
+  `;
 
-  try {
-    const connection = await getConnection();
-    const [results] = await connection.query(query);
-    res.status(200).json(results);
-  } catch (err) {
-    console.error("Database error (getAllComplaints):", err);
-    // Include specific error message in the response for debugging
-    return res.status(500).json({ error: "Database error", details: err.message });
-  }
+  try {
+    const connection = await getConnection();
+    const [results] = await connection.query(query);
+    res.status(200).json(results);
+  } catch (err) {
+    console.error("Database error (getAllComplaints):", err);
+    return res.status(500).json({ error: "Database error" });
+  }
 };
 
 // ✅ Get All Feedbacks (Admin Only)
