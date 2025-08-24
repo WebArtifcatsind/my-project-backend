@@ -6,7 +6,7 @@ import getConnection from "../models/db.js";
 export const submitComplaint = async (req, res) => {
   const { name, email, subject, message } = req.body;
   
-  // Correctly access the Vercel Blob URL from the request object
+  // IMPORTANT: Access the Vercel Blob URL set by the middleware
   const file = req.blobUrl || null; 
 
   if (!name || !email || !subject || !message) {
@@ -47,6 +47,8 @@ export const assignComplaint = async (req, res) => {
 };
 
 // ✅ Submit Feedback with file upload
+// This function doesn't handle a file currently, but if it did,
+// it would also need to use req.blobUrl if a file upload middleware is applied.
 export const submitFeedback = async (req, res) => {
   const { name, email, message } = req.body;
 
@@ -84,7 +86,8 @@ export const getAllComplaints = async (req, res) => {
     res.status(200).json(results);
   } catch (err) {
     console.error("Database error (getAllComplaints):", err);
-    return res.status(500).json({ error: "Database error" });
+    // Include specific error message in the response for debugging
+    return res.status(500).json({ error: "Database error", details: err.message });
   }
 };
 
