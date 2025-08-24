@@ -1,7 +1,3 @@
-
-
-// controllers/clientController.js
-
 // D:\office\webartifacts\web-backend\controllers\clientController.js
 
 import getConnection from "../models/db.js";
@@ -10,8 +6,8 @@ import getConnection from "../models/db.js";
 export const submitComplaint = async (req, res) => {
   const { name, email, subject, message } = req.body;
   
-  // Access the Vercel Blob URL from the request object
-  const file = req.fileUrl || null;
+  // Correctly access the Vercel Blob URL from the request object
+  const file = req.blobUrl || null; 
 
   if (!name || !email || !subject || !message) {
     return res.status(400).json({ error: "All fields except file are required" });
@@ -30,7 +26,6 @@ export const submitComplaint = async (req, res) => {
   }
 };
 
-// ... keep all other controller functions the same
 // ✅ Assign complaint to staff
 export const assignComplaint = async (req, res) => {
   const { complaintId, staffId } = req.body;
@@ -244,7 +239,6 @@ export const deleteStaffComplaint = async (req, res) => {
     return res.status(500).json({ error: "Database error" });
   }
 };
-
 
 
 
