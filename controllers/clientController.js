@@ -6,7 +6,7 @@ import getConnection from "../models/db.js";
 export const submitComplaint = async (req, res) => {
   const { name, email, subject, message } = req.body;
   
-  // IMPORTANT: Access the Vercel Blob URL set by the middleware
+  // IMPORTANT: This is correct, it accesses the URL set by uploadToBlob middleware
   const file = req.blobUrl || null; 
 
   if (!name || !email || !subject || !message) {

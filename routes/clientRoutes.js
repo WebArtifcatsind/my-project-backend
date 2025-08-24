@@ -1,31 +1,40 @@
-
 // routes/clientRoutes.js
 
 import express from "express";
 import {
-  submitComplaint,
-  submitFeedback,
-  getAllComplaints,
-  getAllFeedbacks,
-  deleteFeedback,
-  deleteComplaint,
-  markFeedbackPublic,
-  getPublicFeedbacks,
-  assignComplaint,
-  removePublicStatus,
-  getAssignedComplaints,
-  markComplaintResolved,
-  deleteStaffComplaint,
+  submitComplaint,
+  submitFeedback,
+  getAllComplaints,
+  getAllFeedbacks,
+  deleteFeedback,
+  deleteComplaint,
+  markFeedbackPublic,
+  getPublicFeedbacks,
+  assignComplaint,
+  removePublicStatus,
+  getAssignedComplaints,
+  markComplaintResolved,
+  deleteStaffComplaint,
 } from "../controllers/clientController.js";
 
-import { upload, uploadToBlob } from "../middleware/fileUpload.js";
+// IMPORTANT: Import 'memoryUpload' and 'uploadToBlob' from your central fileUpload.js
+import { memoryUpload, uploadToBlob } from "../middleware/fileUpload.js"; 
 import { verifyAdmin, verifyToken } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
 // Client actions
-// Chain the two middlewares: first multer to get the file, then uploadToBlob to upload to Vercel.
-router.post("/complaint", upload.single("file"), uploadToBlob, submitComplaint);
+// Correctly chain the middlewares:
+// 1. memoryUpload.single("file"): Multer processes the file and stores it in memory (req.file.buffer).
+// 2. uploadToBlob('complaints'): This middleware factory is CALLED with 'complaints'
+//    to upload the file to Vercel Blob and set req.blobUrl.
+// 3. submitComplaint: Your controller function.
+router.post(
+  "/complaint", 
+  memoryUpload.single("file"), // Use memoryUpload for the file
+  uploadToBlob("complaints"), // Correctly call the factory with folder name
+  submitComplaint
+);
 router.post("/feedback", submitFeedback);
 
 router.put("/feedback/public/:id", verifyAdmin, markFeedbackPublic);
