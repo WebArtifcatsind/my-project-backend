@@ -46,28 +46,33 @@ export const assignComplaint = async (req, res) => {
   }
 };
 
-// ✅ Submit Feedback with file upload
-// This function doesn't handle a file currently, but if it did,
-// it would also need to use req.blobUrl if a file upload middleware is applied.
+// ✅ Submit Feedback (stores rating 0..5)
 export const submitFeedback = async (req, res) => {
-  const { name, email, message } = req.body;
+  const { name, email, message, rating } = req.body;
 
-  if (!name || !email || !message) {
-    return res.status(400).json({ error: "All fields are required" });
-  }
+  if (!name || !email || !message) {
+    return res.status(400).json({ error: "All fields are required" });
+  }
 
-  const query = "INSERT INTO feedback (name, email, message, is_public) VALUES (?, ?, ?, false)";
-  const values = [name, email, message];
+  // normalize/clamp rating (tolerate missing or string)
+  let r = parseInt(rating, 10);
+  if (Number.isNaN(r)) r = 0;
+  r = Math.max(0, Math.min(5, r));
 
-  try {
-    const connection = await getConnection();
-    const [result] = await connection.query(query, values);
-    res.status(200).json({ message: "Feedback submitted successfully" });
-  } catch (err) {
-    console.error("DB error:", err);
-    return res.status(500).json({ error: "Database error" });
-  }
+  const query =
+    "INSERT INTO feedback (name, email, message, rating, is_public) VALUES (?, ?, ?, ?, false)";
+  const values = [name, email, message, r];
+
+  try {
+    const connection = await getConnection();
+    await connection.query(query, values);
+    res.status(200).json({ message: "Feedback submitted successfully" });
+  } catch (err) {
+    console.error("DB error (submitFeedback):", err);
+    return res.status(500).json({ error: "Database error" });
+  }
 };
+
 
 // ✅ Get All Complaints (Admin Only)
 export const getAllComplaints = async (req, res) => {
@@ -90,19 +95,21 @@ export const getAllComplaints = async (req, res) => {
   }
 };
 
-// ✅ Get All Feedbacks (Admin Only)
+// ✅ Get All Feedbacks (Admin Only) — include rating
 export const getAllFeedbacks = async (req, res) => {
-  const query = "SELECT id, name, email, message, submitted_at, is_public FROM feedback ORDER BY submitted_at DESC";
+  const query =
+    "SELECT id, name, email, message, rating, submitted_at, is_public FROM feedback ORDER BY submitted_at DESC";
 
-  try {
-    const connection = await getConnection();
-    const [results] = await connection.query(query);
-    res.status(200).json(results);
-  } catch (err) {
-    console.error("Database error (getAllFeedbacks):", err);
-    return res.status(500).json({ error: "Database error" });
-  }
+  try {
+    const connection = await getConnection();
+    const [results] = await connection.query(query);
+    res.status(200).json(results);
+  } catch (err) {
+    console.error("Database error (getAllFeedbacks):", err);
+    return res.status(500).json({ error: "Database error" });
+  }
 };
+
 
 // ✅ Delete Feedback by ID (Admin Only)
 export const deleteFeedback = async (req, res) => {
@@ -150,17 +157,19 @@ export const markFeedbackPublic = async (req, res) => {
 };
 
 // ✅ Get all public feedbacks (for frontend)
-export const getPublicFeedbacks = async (req, res) => {
-  const query = "SELECT name, message, submitted_at FROM feedback WHERE is_public = true ORDER BY submitted_at DESC";
 
-  try {
-    const connection = await getConnection();
-    const [results] = await connection.query(query);
-    res.status(200).json(results);
-  } catch (err) {
-    console.error("DB error (getPublicFeedbacks):", err);
-    return res.status(500).json({ error: "Database error" });
-  }
+export const getPublicFeedbacks = async (req, res) => {
+  const query =
+    "SELECT name, message, rating, submitted_at FROM feedback WHERE is_public = true ORDER BY submitted_at DESC";
+
+  try {
+    const connection = await getConnection();
+    const [results] = await connection.query(query);
+    res.status(200).json(results);
+  } catch (err) {
+    console.error("DB error (getPublicFeedbacks):", err);
+    return res.status(500).json({ error: "Database error" });
+  }
 };
 
 // ✅ Remove public status (make private)
